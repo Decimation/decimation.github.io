@@ -1,0 +1,321 @@
+
+<!DOCTYPE HTML>
+<html>
+<head>
+<title>Article: Creating a pointer type in C#</title>
+<link rel="stylesheet" type="text/css" 
+    href="https://codeproject.freetls.fastly.net/App_Themes/CodeProject/Css/Main.css?dt=2.8:2022-12-16:1" />
+<base href="https://www.codeproject.com/KB/cs/" />
+</head>
+<body>
+<!--
+HTML for article "Creating a pointer type in C#" by Ðecimation
+URL: https://www.codeproject.com/KB/cs/1254502.aspx
+Copyright 2018 by Ðecimation
+All formatting, additions and alterations Copyright © CodeProject, 1999-2022
+-->
+
+<hr class="Divider subdue" />
+<div>
+
+
+
+<!-- Start Article -->
+<span id="ArticleContent">
+
+
+<h2>Can you <em>really </em>do that?</h2>
+
+<p>Creating a pointer type in a managed language like C# may sound like heresy, but C# actually has most of the features necessary to create a pointer type.</p>
+
+<ol>
+	<li>Index operator</li>	<li>Postfix operator</li>	<li><code>struct </code>value type</li>	<li><code>void*</code></li></ol>
+
+<p>You may be thinking, <em>"how are you going to create a pointer if you can't get the address of a managed object?"</em>&nbsp;But that's totally possible! There is an undocumented keyword, <code><em>__makeref</em></code>, that can help us do this.</p>
+
+<p><code>__makeref&nbsp;</code>returns a structure, <code>TypedReference</code>. A <code>TypedReference </code>acts very much like a pointer itself. It's commonly used in Reflection, notably when <em>(directly)</em> retrieving the value of a field.&nbsp; A <code>TypedReference </code>contains two <code>IntPtr </code>fields: <code>"Value"</code>, and<code> "Type"</code>. We can make an educated guess that <code>"Value"</code> is the actual address of the object. Therefore, with the power of casting, we can use a&nbsp;<code>TypedReference</code> to get the address of a managed object:</p>
+
+<pre class='lang-csharp' data-language='cs' data-allowShrink='True' data-collapse='False' data-showheader='false'>
+public static IntPtr AddressOf&lt;T&gt;(ref T t)
+{
+   TypedReference tr = __makeref(t);
+   return *(IntPtr*) (&amp;tr);
+}</pre>
+
+<p><em>Note: You'll want to use the </em><code>ref </code><em>qualifier here so we get the correct address of reference types.</em></p>
+
+<h2>Creating a pointer type</h2>
+
+<p><em>Requirements: System.Runtime.CompilerServices.Unsafe for reading/writing. It can be found on NuGet.</em></p>
+
+<ol>
+</ol>
+
+<p>Now that we can get the address of an object, we can create a pointer type. First, we'll add one field containing the address we're pointing to:</p>
+
+<pre class='lang-csharp' data-language='cs' data-allowShrink='True' data-collapse='False' data-showheader='false'>
+public unsafe struct Pointer&lt;T&gt;
+{
+   private void* m_value;</pre>
+
+<p>To make our pointer as authentic™ as possible, we'll make it a <code>struct </code>so it behaves like a&nbsp;C/C++ pointer and like a reference type in C#.</p>
+
+<p>We'll make <code>m_value </code>our only field so it is represented just like a pointer in memory. It'll also keep the size of the type the same size as a native pointer, 4 or 8 bytes.</p>
+
+<p><em>Note: You can use either <code>void*</code> or <code>IntPtr</code>, it doesn't make a difference. For this tutorial we'll use <code>void*</code> because it's what <code>CompilerServices.Unsafe </code>uses.</em></p>
+
+<p>We'll also create a constructor while we're at it:</p>
+
+<pre class='lang-csharp' data-language='cs' data-allowShrink='True' data-collapse='False' data-showheader='false'>
+public Pointer(void* v)
+{
+   m_value = v;
+}</pre>
+
+<h4>Creating the indexer</h4>
+
+<p>If you're at all familiar with C/C++ pointers, you know you can index them just like arrays. All that's up to us is doing the arithmetic behind the scenes. So we'll make a method to calculate the correct address to read from. The math is very simple, just multiply the index by the size of the type:</p>
+
+<pre data-allowShrink='True' data-collapse='False' data-showheader='false'>
+private static void* Offset(void* p, int elemCnt)
+{
+   int size = Unsafe.SizeOf&lt;T&gt;();
+   size *= elemCnt;
+   return (void*) (((long) p) + size);
+}</pre>
+
+<p>But you may be thinking, <em>"<code>sizeof </code>doesn't work with managed types!"&nbsp;</em>But thankfully, <code>CompilerServices.Unsafe</code> provides us with a <code>SizeOf&lt;T&gt;</code> method. Even then, the size of a managed type is just the size of a pointer, 4 <em>(32-bit)</em> or 8 <em>(64-bit)</em> bytes, so you don't actually have to use <code>SizeOf&lt;T&gt;</code> if you don't want to.</p>
+
+<p><code>CompilerServices.Unsafe</code> also supplies us with a method for reading/writing to addresses, so we will use that to implement the getter/setter for our indexer:</p>
+
+<pre class='lang-csharp' data-language='cs' data-allowShrink='True' data-collapse='False' data-showheader='false'>
+public T this[int index] {
+   get =&gt; Unsafe.Read&lt;T&gt;(Offset(m_value, index));
+   set =&gt; Unsafe.Write(Offset(m_value, index), value);
+}</pre>
+
+<h4>Overloading the postfix operators</h4>
+
+<p>Now we have an indexer, but we're not done yet. In C/C++ you can also postfix increment and decrement pointers just like integers. To do this, we'll also use the <code>Offset </code>method we wrote earlier to create an <code>Increment </code>and <code>Decrement </code>method, and overload the postfix operators.</p>
+
+<pre class='lang-csharp' data-language='cs' data-allowShrink='True' data-collapse='False' data-showheader='false'>
+private void Increment(int cnt = 1)
+{
+   m_value = Offset(m_value, cnt);
+}</pre>
+
+<pre class='lang-csharp' data-language='cs' data-allowShrink='True' data-collapse='False' data-showheader='false'>
+private void Decrement(int cnt = 1)
+{
+   m_value = Offset(m_value, -cnt);
+}</pre>
+
+<pre class='lang-csharp' data-language='cs' data-allowShrink='True' data-collapse='False' data-showheader='false'>
+public static Pointer&lt;T&gt; operator ++(Pointer&lt;T&gt; p)
+{
+   p.Increment();
+   return p;
+}</pre>
+
+<pre class='lang-csharp' data-language='cs' data-allowShrink='True' data-collapse='False' data-showheader='false'>
+public static Pointer&lt;T&gt; operator --(Pointer&lt;T&gt; p)
+{
+   p.Decrement();
+   return p;
+}</pre>
+
+<h4>Finishing touches</h4>
+
+<p>Now you can index and postfix the pointer. But how do you dereference it? Easy, we'll just create a <code>Value </code>property:</p>
+
+<pre class='lang-csharp' data-language='cs' data-allowShrink='True' data-collapse='False' data-showheader='false'>
+public T Value {
+   get =&gt; Unsafe.Read&lt;T&gt;(m_value);
+   set =&gt; Unsafe.Write(m_value, value);
+}</pre>
+
+<p><em>Note: this is essentially the same operation as <code>this[0]</code>, but it's just for convenience.</em></p>
+
+<p>At this point we have most of the traits that make up a pointer. All that's left is adding a few things to polish things up. We'll create an implicit operator for synergy with our <code>AddressOf </code>method:</p>
+
+<pre class='lang-csharp' data-language='cs' data-allowShrink='True' data-collapse='False' data-showheader='false'>
+public static implicit operator Pointer&lt;T&gt;(void* v)
+{
+   return new Pointer&lt;T&gt;(v);
+}</pre>
+
+<pre class='lang-csharp' data-language='cs' data-allowShrink='True' data-collapse='False' data-showheader='false'>
+public static implicit operator Pointer&lt;T&gt;(IntPtr p)
+{
+   return new Pointer&lt;T&gt;(p.ToPointer());
+}</pre>
+
+<p>We'll also override the <code>ToString </code>method for easily seeing what we're pointing to:</p>
+
+<pre class='lang-csharp' data-language='cs' data-allowShrink='True' data-collapse='False' data-showheader='false'>
+public override string ToString()
+{
+   return Value.ToString();
+}</pre>
+
+<p>Now we've written pretty much everything that defines a pointer. You can add a few more features yourself, such as an <code>Address </code>property or overloading the add and subtract operators.</p>
+
+<p>Of course, pointers aren't just used for pointing to other objects, but for dynamic memory allocation, handles, and arrays. <em>(I'll write&nbsp;an article on all those some other time.)</em> But for now we'll stick to pointing to other objects.</p>
+
+<h2>Testing and explanation</h2>
+
+<p>We'll make a <code>string </code>and tell our pointer to point to <code>str</code>'s address. We can read and write to both objects no problem.</p>
+
+<pre data-allowShrink='True' data-collapse='False' data-showheader='false'>
+var             str     = "foo";
+Pointer&lt;string&gt; pString = AddressOf(ref str);
+Debug.Assert(pString.Value == "foo");
+pString.Value = "bar";
+Debug.Assert(str == "bar");
+str = "deadbeef";
+Debug.Assert(pString.Value == "deadbeef");
+Debug.Assert(pString.Value == str);</pre>
+
+<p>&nbsp;</p>
+
+<p>There's an important thing to note here if you aren't super familiar with reference types and pointers. What we're <em>really </em>doing here is pointing to a pointer. We aren't pointing to <code>str </code>itself&nbsp;in heap memory. Because a <code>string </code>is a reference type, it's actually a pointer <em>internally</em>. The runtime does the dereferencing and pointer mechanics behind the scenes for you.</p>
+
+<p>Of course, our pointer will also work on unmanaged types just as well:</p>
+
+<pre class='lang-csharp' data-language='cs' data-allowShrink='True' data-collapse='False' data-showheader='false'>
+long l = 0xDEADBEEF;
+Pointer&lt;long&gt; pLong = AddressOf(ref l);
+Debug.Assert(pLong.Value == 0xDEADBEEF);
+pLong.Value = 0xDEAD;
+Debug.Assert(l == 0xDEAD);</pre>
+
+<h2>What about the GC?</h2>
+
+<p>If you know a thing or two about the garbage collector, you know the garbage collector compacts the heap, which changes the address reference types point to. However, the <em>address </em>of the reference type's pointer doesn't change, only the address of what the reference type&nbsp; <em>points </em>to.</p>
+
+<p>To demonstrate:</p>
+
+<pre class='lang-csharp' data-language='cs' data-allowShrink='True' data-collapse='False' data-showheader='false'>
+var               str     = "foo";
+Pointer&lt;string&gt; pString = AddressOf(ref str);
+Debug.Assert(pString.Value == "foo");
+pString.Value = "bar";
+Debug.Assert(str == "bar");
+Console.WriteLine("pString points to: {0:X}", pString.Address.ToInt64());
+Console.WriteLine("str points to: {0:X}", (*(IntPtr*) AddressOf(ref str)).ToInt64());
+
+
+const int maxPasses  = 1000;
+const int maxObjects = 9000;
+
+int passes = 0;
+while (passes++ &lt; maxPasses) {
+   object[] oArr = new object[maxObjects];
+   for (int i = 0; i &lt; oArr.Length; i++) {
+      oArr[i] = new object();
+   }
+
+   Debug.Assert(pString.Value == str);
+   Debug.Assert(pString.Address == AddressOf(ref str));
+   Debug.Assert(str == "bar");
+   Debug.Assert(pString.Value == "bar");
+}
+
+
+Debug.Assert(pString.Value == str);
+Debug.Assert(pString.Address == AddressOf(ref str));
+Debug.Assert(str == "bar");
+Debug.Assert(pString.Value == "bar");
+Console.WriteLine("pString points to: {0:X}", pString.Address.ToInt64());
+Console.WriteLine("str points to: {0:X}", (*(IntPtr*) AddressOf(ref str)).ToInt64());</pre>
+
+<p>Here, we create a ton of objects to make the GC run and compact the heap. We make sure our pointer points to the correct object and has the correct value.</p>
+
+<p>The output before the GC compacted the heap:</p>
+
+<pre class='lang-csharp' data-language='cs' data-allowShrink='True' data-collapse='False' data-showheader='false'>
+pString points to: 6BD399EA98
+address of str: 6BD399EA98
+str points to: 20559E392B8</pre>
+
+<p>After the GC compacted the heap:</p>
+
+<pre data-allowShrink='True' data-collapse='False' data-showheader='false'>
+pString points to: 6BD399EA98
+address of str: 6BD399EA98
+str points to: 20559E2A1F0</pre>
+
+<p>As you can see, <code>str </code>pointed to a different address in the heap after the GC ran. <strong>This test would fail if our pointer pointed to the heap memory of <code>str</code></strong>, but it didn't. For an explanation, continue reading.</p>
+
+<h2>What <em>can't</em> it do?</h2>
+
+<p>Like mentioned earlier, you'll run into problems if you point to the heap memory of reference types because the GC compacts the heap. This actually can be avoided if you pin an object, but we won't go into detail about that.</p>
+
+<p>To demonstrate, we'll try pointing to an <code>int </code>inside of an <code>int[]</code> array:</p>
+
+<pre data-allowShrink='True' data-collapse='False' data-showheader='false'>
+int[] arr = {1, 2, 3, 4, 5};
+IntPtr arrInHeap = *(IntPtr*) AddressOf(ref arr);
+int offsetToArrData = IntPtr.Size * 2;
+Pointer&lt;int&gt; pArr = arrInHeap + offsetToArrData;
+Debug.Assert(pArr[0] == arr[0]);</pre>
+
+<p>To get to the heap memory of <code>arr</code>, we need to read <code>arr</code>'s heap pointer. Then we need to offset that pointer by <code>IntPtr.Size * 2</code> (skip over the <code>MethodTable*</code>, padding <code>Int32</code>, and length <code>Int32</code>.) <em>(I explained this in my first article.)</em></p>
+
+<p>Now we're pointing to <code>arr</code>'s actual data. We can read and write to it all we want, but we'll run into a problem:</p>
+
+<pre class='lang-csharp' data-language='cs' data-allowShrink='True' data-collapse='False' data-showheader='false'>
+int[]          arr             = {1, 2, 3, 4, 5};
+IntPtr         arrInHeap       = *(IntPtr*) AddressOf(ref arr);
+int            offsetToArrData = IntPtr.Size * 2;
+Pointer&lt;int&gt; pArr            = arrInHeap + offsetToArrData;
+Debug.Assert(pArr[0] == arr[0]);
+Console.WriteLine("pArr points to: {0:X}", pArr.Address.ToInt64() - IntPtr.Size * 2);
+Console.WriteLine("arr&#39;s heap address: {0:X}", (*(IntPtr*) AddressOf(ref arr)).ToInt64());
+
+const int maxPasses  = 1000;
+const int maxObjects = 9000;
+
+int passes = 0;
+while (passes++ &lt; maxPasses) {
+   object[] oArr = new object[maxObjects];
+   for (int i = 0; i &lt; oArr.Length; i++) {
+      oArr[i] = new object();
+   }
+}
+
+Console.WriteLine("pArr points to: {0:X}", pArr.Address.ToInt64() - IntPtr.Size * 2);
+Console.WriteLine("arr&#39;s heap address: {0:X}", (*(IntPtr*) AddressOf(ref arr)).ToInt64());</pre>
+
+<p>Before GC:</p>
+
+<pre class='lang-csharp' data-language='cs' data-allowShrink='True' data-collapse='False' data-showheader='false'>
+pArr points to: 2D09BC69330
+arr&#39;s heap address: 2D09BC69330</pre>
+
+<p>After GC:</p>
+
+<pre class='lang-csharp' data-language='cs' data-allowShrink='True' data-collapse='False' data-showheader='false'>
+pArr points to: 2D09BC69330
+arr&#39;s heap address: 2D09BC5A268</pre>
+
+<p>Basically, don't point to raw heap memory with this unless you pin the object.</p>
+
+<h2>Conclusion</h2>
+
+<p>And that is how you create a pointer in C#! I hope you enjoyed reading.</p>
+
+<p><a href="https://github.com/Decimation/RazorSharp/blob/master/RazorSharp/Pointers/LightPointer.cs">Here is the full source</a></p>
+
+<p><a href="https://github.com/Decimation/RazorSharp">My GitHub</a></p>
+
+
+</span>
+<!-- End Article -->
+
+
+
+
+</div> 
+</body>
+</html>

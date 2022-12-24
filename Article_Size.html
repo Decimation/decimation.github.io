@@ -1,0 +1,263 @@
+<!DOCTYPE HTML>
+<html>
+
+<head>
+	<title>Article: Managed object size</title>
+	<link rel="stylesheet" type="text/css"
+		href="https://codeproject.freetls.fastly.net/App_Themes/CodeProject/Css/Main.css?dt=2.8:2022-12-16:1" />
+	<base href="https://www.codeproject.com/KB/cs/" />
+</head>
+
+<body>
+	<!--
+HTML for article "Calculating Heap Size of Managed Objects" by Ðecimation
+URL: https://www.codeproject.com/KB/cs/1254217.aspx
+Copyright 2018 by Ðecimation
+All formatting, additions and alterations Copyright © CodeProject, 1999-2022
+-->
+
+	<hr class="Divider subdue" />
+	<div>
+
+
+
+
+		<!-- Start Article -->
+		<span id="ArticleContent">
+
+
+			<ul class="download">
+				<li><a href="https://github.com/Decimation/RazorSharp/tree/master/RazorSharp/CLR/Structures">My GitHub
+						with the full source</a></li>
+			</ul>
+
+			<h2>Introduction</h2>
+
+			<p>I've been trying to figure out how to calculate the heap size of a managed object for a while now, but
+				I've finally figured it out.</p>
+
+			<p>After trying methods from <a
+					href="https://stackoverflow.com/questions/605621/how-to-get-object-size-in-memory">here</a>, I came
+				across this code snippet a while back from <a
+					href="https://stackoverflow.com/questions/10800063/how-to-instance-a-c-sharp-class-in-unmanaged-memory-possible">here</a>
+				which proved to be promising:</p>
+
+			<pre class='lang-csharp' data-language='cs' data-allowShrink='True' data-collapse='False'
+				data-showheader='false'>
+Marshal.ReadInt32(typeof(T).TypeHandle.Value, 4)</pre>
+
+			<p>After further research, I discovered that <code>TypeHandle.Value</code> is actually the pointer to a
+				type's <a
+					href="https://github.com/dotnet/coreclr/blob/61146b5c5851698e113e936d4e4b51b628095f27/src/vm/methodtable.h">MethodTable</a>,
+				and that code snippet read a <code>DWORD</code> from it. (This will be elaborated on later.)</p>
+
+			<h2>Background</h2>
+
+			<p>As you may already know, the layout of a managed object in the heap is as follows (64-bit):</p>
+
+
+			<table class="ArticleTable">
+				<thead>
+					<tr>
+						<td><strong>Offset</strong></td>
+						<td><strong>Size</strong></td>
+						<td><strong>Type</strong></td>
+					</tr>
+				</thead>
+				<tbody>
+					<tr>
+						<td>-8</td>
+						<td>8</td>
+						<td><code>Object Header</code></td>
+					</tr>
+					<tr>
+						<td>0</td>
+						<td>8</td>
+						<td><code>MethodTable*</code></td>
+					</tr>
+					<tr>
+						<td>8</td>
+						<td>...</td>
+						<td><code><em>Fields</em></code></td>
+					</tr>
+				</tbody>
+			</table>
+
+			<p>A <code>MethodTable</code> contains a type's information necessary for the CLR. The first two fields
+				inside the <code>MethodTable</code> are used for calculation of the heap size:</p>
+
+
+			<table class="ArticleTable">
+				<thead>
+					<tr>
+						<td><strong>Offset</strong></td>
+						<td><strong>Size</strong></td>
+						<td><strong>Type</strong></td>
+						<td><strong>Name</strong></td>
+					</tr>
+				</thead>
+				<tbody>
+					<tr>
+						<td>0</td>
+						<td>4</td>
+						<td><code>DWORD</code></td>
+						<td><code>m_dwFlags</code></td>
+					</tr>
+					<tr>
+						<td>4</td>
+						<td>4</td>
+						<td><code>DWORD</code></td>
+						<td><code>m_BaseSize</code></td>
+					</tr>
+				</tbody>
+			</table>
+
+			<p>If you haven't noticed, that code snippet from earlier read the <code>DWORD</code>
+				<code>m_BaseSize</code>. However, the first <code>DWORD</code> is also very important in calculating the
+				size.</p>
+
+			<p>The engineers of the CLR are very creative in minimizing the size of objects. The lowest
+				<code>WORD</code> in <code>m_dwFlags</code> is the <em>component size</em> of a type. If the type is an
+				"array type" such as an <code>int[]</code> or <code>string</code>, the value of the lowest
+				<code>WORD</code> will be the size of one component <em>(read: element)</em>. For example, for a
+				<code>string</code>, the component size will be 2 (<code>sizeof(char)</code>), and for an
+				<code>int[]</code>, it will be 4 (<code>sizeof(int)</code>). The other <code>WORD</code> is used as
+				flags.</p>
+
+			<p>Going back to the snippet above, the second <code>DWORD</code>, <code>m_BaseSize</code>, is the base
+				instance size of the object when allocated on the heap. By default, this value is 24 <em>(64-bit)</em>
+				or 12 <em>(32-bit)</em> because that is the <a
+					href="https://github.com/dotnet/coreclr/blob/db55a1decc1d02538e61eac7db80b7daa351d5b6/src/gc/env/gcenv.object.h">minimum
+					size of an object:</a></p>
+
+			<pre class='lang-cplusplus' data-language='C++' data-allowShrink='True' data-collapse='False'
+				data-showheader='false'>
+#define MIN_OBJECT_SIZE     (2*sizeof(uint8_t*) + sizeof(ObjHeader))</pre>
+
+			<p><code>m_BaseSize</code> alone is typically enough to calculate the heap size of an object, but there are
+				two special types in the CLR that have dynamic sizes; that is, their sizes vary per instance. Those are
+				<code>strings</code> and <code>arrays</code>. Therefore, the runtime uses this <a
+					href="https://github.com/dotnet/coreclr/blob/a6c2f7834d338e08bf3dcf9dedb48b2a0c08fcfa/src/vm/object.h#L75">formula</a>
+				for calculating the size of objects in the heap:</p>
+
+			<pre class='lang-cplusplus' data-language='C++' data-allowShrink='True' data-collapse='False'
+				data-showheader='false'>
+MT-&gt;GetBaseSize() + ((OBJECTTYPEREF-&gt;GetSizeField() * MT-&gt;GetComponentSize())</pre>
+
+			<p>In other words:</p>
+
+			<pre class='lang-cplusplus' data-language='C++' data-allowShrink='True' data-collapse='False'
+				data-showheader='false'>
+Base instance size + (length * component size)</pre>
+
+			<p>For instance, the size of an <code>object</code> would evaluate to this <em>(64-bit)</em>:</p>
+
+			<pre class='lang-cplusplus' data-language='C++' data-allowShrink='True' data-collapse='False'
+				data-showheader='false'>
+24 + (1 * 0) == 24</pre>
+
+			<p>Using this formula, we can calculate the heap size of any object.</p>
+
+			<h2>Implementation</h2>
+
+			<p><strong>Disclaimer</strong>: This may be considered very evil.</p>
+
+			<p><strong>Note</strong>: I aliased <code>UInt32</code> as <code>DWORD</code> and <code>UInt16</code> as
+				<code>WORD</code>.</p>
+
+			<p>Thankfully, replicating the <code>MethodTable</code> can be done easily thanks to the
+				<code>StructLayout </code>and <code>FieldOffset</code> attribute:</p>
+
+			<pre class='lang-csharp' data-language='cs' data-allowShrink='True' data-collapse='False'
+				data-showheader='false'>
+[StructLayout(LayoutKind.Explicit)]
+    public unsafe struct MethodTable
+    {
+        [FieldOffset(0)] private DWFlags m_dwFlags;
+ 
+        [FieldOffset(4)] private DWORD m_BaseSize;
+        ...</pre>
+
+			<p>Because only one <code>WORD</code> is used for component size, I made a separate <code>struct</code>
+				splitting the two <code>WORDS</code> for convenience:</p>
+
+			<pre class='lang-csharp' data-language='cs' data-allowShrink='True' data-collapse='False'
+				data-showheader='false'>
+[StructLayout(LayoutKind.Explicit)]
+    internal struct DWFlags
+    {
+        [FieldOffset(0)] internal WORD m_componentSize;
+        [FieldOffset(2)] internal WORD m_flags;
+       ...</pre>
+
+			<p>Now that we have the representation of a <code>MethodTable</code>, it's just a matter of acquiring it.
+				Going back to <code>TypeHandle.Value</code>, we know that it already points to a
+				<code>MethodTable*</code>, so now it's just a matter of casting it!</p>
+
+			<pre class='lang-csharp' data-language='cs' data-allowShrink='True' data-collapse='False'
+				data-showheader='false'>
+var methodTable = (MethodTable*) typeof(T).TypeHandle.Value;</pre>
+
+			<p>Now we can calculate the heap size of any object at runtime. You can write your own methods for
+				calculating it. Here is an example of my code to show how you can calculate the size:</p>
+
+			<pre class='lang-csharp' data-language='cs' data-allowShrink='True' data-collapse='False'
+				data-showheader='false'>
+public static int HeapSize&lt;T&gt;(ref T t) where T : class
+{
+         var methodTable = (MethodTable*) typeof(T).TypeHandle.Value;
+
+         if (typeof(T).IsArray) {
+                var arr = t as Array;
+                return (int) methodTable-&gt;BaseSize + arr.Length * methodTable-&gt;ComponentSize;
+         }
+
+         if (t is string) {
+                var str = t as string;
+                return (int) methodTable-&gt;BaseSize + str.Length * methodTable-&gt;ComponentSize;
+         }
+
+        return (int) methodTable-&gt;BaseSize;
+}</pre>
+
+			<p><strong>Note</strong>: I only followed the specified formula for array-type objects, because otherwise
+				the formula would still evaluate to the base size.</p>
+
+			<p>Now all that's left to do is to verify it works.</p>
+
+			<pre class='lang-csharp' data-language='cs' data-allowShrink='True' data-collapse='False'
+				data-showheader='false'>
+string s = "foo";</pre>
+
+			<p><code>HeapSize</code> gives us:</p>
+
+			<pre class='lang-cplusplus' data-language='C++' data-allowShrink='True' data-collapse='False'
+				data-showheader='false'>
+HeapSize(ref s) <strong>== 32</strong></pre>
+
+			<p><code>WinDbg</code> gives us:</p>
+
+			<pre class='lang-cplusplus' data-language='C++' data-allowShrink='True' data-collapse='False'
+				data-showheader='false'>
+!DumpObj /d 000001f98001bc08
+        Name:        System.String
+        MethodTable: 00007fff1c1a6830
+        EEClass:     00007fff1ba86cb8
+        <strong>Size:        32(0x20) bytes</strong>
+        File:        C:\WINDOWS\Microsoft.Net\assembly\GAC_64\mscorlib\
+                        v4.0_4.0.0.0__b77a5c561934e089\mscorlib.dll
+        String:      foo</pre>
+
+			<p>And that is how the GC calculates the heap size of objects!</p>
+
+
+		</span>
+		<!-- End Article -->
+
+
+
+
+	</div>
+</body>
+
+</html>

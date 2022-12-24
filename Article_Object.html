@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html class=" aeokyt idc0_332">
+
+<head>
+	<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+	<title>Article: Object layout</title>
+	<link rel="stylesheet" type="text/css" href="assets/Main.css">
+	<!-- base href="https://www.codeproject.com/KB/cs/" -->
+</head>
+
+<body>
+	<!--
+HTML for article "Determining Object Layout using FieldDescs" by Ðecimation
+URL: https://www.codeproject.com/KB/cs/1257186.aspx
+Copyright 2018 by Ðecimation
+All formatting, additions and alterations Copyright © CodeProject, 1999-2022
+-->
+
+	<hr class="Divider subdue">
+	<div>
+
+	<a href="https://www.codeproject.com/Articles/1254502/Creating-a-pointer-type-in-Csharp">Original article</a>
+
+
+
+		<!-- Start Article -->
+		<span id="ArticleContent">
+
+
+			<h2>Introduction</h2>
+
+			<p>For every field in an object, the CLR allocates a special structure, <code>FieldDesc</code>, containing
+				metadata for the runtime and Reflection. A <code>FieldDesc </code>contains information such as the field
+				offset, whether the field is <code>static </code>or <code>ThreadStatic</code>, <code>public </code>or
+				<code>private</code>, etc. To determine the layout of an object, we'll be looking specifically at the
+				offset metadata.</p>
+
+			<h2>Layout of a FieldDesc</h2>
+
+			<p>Before we can determine the layout of an object, we of course need to know the layout of a
+				<code>FieldDesc</code>. A <code>FieldDesc </code>contains 3 fields:</p>
+
+
+			<table class="ArticleTable">
+				<thead>
+					<tr>
+						<td style="text-align: center">Offset</td>
+						<td style="text-align: center">Type</td>
+						<td style="text-align: center">Name</td>
+					</tr>
+				</thead>
+				<tbody>
+					<tr>
+						<td>0</td>
+						<td><code>MethodTable*</code></td>
+						<td>
+							<pre data-allowshrink="True" data-collapse="False"
+								data-showheader="false">m_pMTOfEnclosingClass</pre>
+						</td>
+					</tr>
+					<tr>
+						<td>8</td>
+						<td><code>DWORD</code></td>
+						<td><em>(DWORD 1)</em></td>
+					</tr>
+					<tr>
+						<td>12</td>
+						<td><code>DWORD</code></td>
+						<td><em>(DWORD 2)</em></td>
+					</tr>
+				</tbody>
+			</table>
+
+			<p>&nbsp;</p>
+
+			<p><img alt="" src="assets/de8509b2-ebca-4348-a17e-e42a605b435b.Png"
+					style="width: 640px; height: 390px"></p>
+
+			<p>&nbsp;</p>
+
+			<p>The CLR engineers designed their structures to be as small as
+				possible; because of that, all the metadata is actually stored as
+				bitfields in <code>DWORD 1</code> and <code>DWORD 2</code>.</p>
+
+			<h3>DWORD 1</h3>
+
+
+			<table class="ArticleTable">
+				<thead>
+					<tr>
+						<td style="text-align: center"><strong>Bits</strong></td>
+						<td style="text-align: center"><strong>Name</strong></td>
+						<td style="text-align: center"><strong>Description</strong></td>
+					</tr>
+				</thead>
+				<tbody>
+					<tr>
+						<td>24</td>
+						<td>
+							<pre class="lang-csharp" data-language="cs" data-allowshrink="True" data-collapse="False"
+								data-showheader="false">m_mb</pre>
+						</td>
+						<td><code>MemberDef</code> metadata. This metadata is eventually used in
+							<code>FieldInfo.MetadataToken</code> after some manipulation.</td>
+					</tr>
+					<tr>
+						<td>1</td>
+						<td>
+							<pre class="lang-csharp" data-language="cs" data-allowshrink="True" data-collapse="False"
+								data-showheader="false">m_isStatic</pre>
+						</td>
+						<td>Whether the field is <code>static</code></td>
+					</tr>
+					<tr>
+						<td>1</td>
+						<td>
+							<pre class="lang-csharp" data-language="cs" data-allowshrink="True" data-collapse="False"
+								data-showheader="false">m_isThreadLocal</pre>
+						</td>
+						<td>Whether the field is decorated with a <code>ThreadStatic </code>attribute</td>
+					</tr>
+					<tr>
+						<td>1</td>
+						<td>
+							<pre class="lang-csharp" data-language="cs" data-allowshrink="True" data-collapse="False"
+								data-showheader="false">m_isRVA</pre>
+						</td>
+						<td><em>(Relative Virtual Address)</em></td>
+					</tr>
+					<tr>
+						<td>3</td>
+						<td>
+							<pre data-allowshrink="True" data-collapse="False" data-showheader="false">m_prot</pre>
+						</td>
+						<td>Access level</td>
+					</tr>
+					<tr>
+						<td>1</td>
+						<td>
+							<pre class="lang-csharp" data-language="cs" data-allowshrink="True" data-collapse="False"
+								data-showheader="false">m_requiresFullMbValue</pre>
+						</td>
+						<td>
+							<p>Whether <code>m_mb</code> needs all bits</p>
+						</td>
+					</tr>
+				</tbody>
+			</table>
+
+			<h3>DWORD 2</h3>
+
+
+			<table class="ArticleTable">
+				<thead>
+					<tr>
+						<td style="text-align: center"><strong>Bits</strong></td>
+						<td style="text-align: center"><strong>Name</strong></td>
+						<td style="text-align: center"><strong>Description</strong></td>
+					</tr>
+				</thead>
+				<tbody>
+					<tr>
+						<td>27</td>
+						<td>
+							<pre class="lang-csharp" data-language="cs" data-allowshrink="True" data-collapse="False"
+								data-showheader="false">m_dwOffset</pre>
+						</td>
+						<td>Field offset</td>
+					</tr>
+					<tr>
+						<td>5</td>
+						<td>
+							<pre class="lang-csharp" data-language="cs" data-allowshrink="True" data-collapse="False"
+								data-showheader="false">m_type</pre>
+						</td>
+						<td><code>CorElementType</code> of the field</td>
+					</tr>
+				</tbody>
+			</table>
+
+			<h2>Replication in C#</h2>
+
+			<p>We can easily replicate a <code>FieldDesc </code>in C# using the <code>StructLayout </code>and
+				<code>FieldOffset </code>attributes.</p>
+
+			<pre class="lang-csharp" data-language="cs" data-allowshrink="True" data-collapse="False"
+				data-showheader="false">[StructLayout(LayoutKind.Explicit)]
+public unsafe struct FieldDesc
+{
+   [FieldOffset(0)] private readonly void* m_pMTOfEnclosingClass;
+
+   // unsigned m_mb                   : 24;
+   // unsigned m_isStatic             : 1;
+   // unsigned m_isThreadLocal        : 1;
+   // unsigned m_isRVA                : 1;
+   // unsigned m_prot                 : 3;
+   // unsigned m_requiresFullMbValue  : 1;
+   [FieldOffset(8)] private readonly uint m_dword1;
+
+   // unsigned m_dwOffset                : 27;
+   // unsigned m_type                    : 5;
+   [FieldOffset(12)] private readonly uint m_dword2;
+   ...</pre>
+
+			<p>Reading the bitfields themselves is easy using bitwise operations:</p>
+
+			<pre class="lang-csharp" data-language="cs" data-allowshrink="True" data-collapse="False"
+				data-showheader="false">/// <span class="code-summarycomment">&lt;summary&gt;
+</span>///     Offset in memory
+/// <span class="code-summarycomment">&lt;/summary&gt;
+</span>public int Offset =&gt; (int) (m_dword2 &amp; 0x7FFFFFF);
+
+public int MB =&gt; (int) (m_dword1 &amp; 0xFFFFFF);
+
+private bool RequiresFullMBValue =&gt; ReadBit(m_dword1, 31);
+
+...</pre>
+
+			<p>We perform a bitwise <code>AND</code> operation on <code>m_dword2 </code>to get the value of the 27 bits
+				for <code>m_dwOffset</code>.</p>
+
+			<pre data-language="text" data-allowshrink="True" data-collapse="False"
+				data-showheader="false">‭111111111111111111111111111‬ (27 bits) = 0x7FFFFFF</pre>
+
+			<p>I also made a small function for reading bits for convenience:</p>
+
+			<pre class="lang-csharp" data-language="cs" data-allowshrink="True" data-collapse="False"
+				data-showheader="false">static bool ReadBit(uint b, int bitIndex)
+{
+   return (b &amp; (1 &lt;&lt; bitIndex)) != 0;
+}</pre>
+
+			<p>We won't write the code for retrieving all of the bitfields' values because we're only interested in
+				<code>m_dwOffset</code>, but if you're interested, you can view the code for that <a
+					href="https://github.com/Decimation/RazorSharp/blob/master/RazorSharp/CLR/Structures/FieldDesc.cs">here</a>.
+				We'll also go back to <code>MB </code>and <code>RequiresFullMBValue </code>later.</p>
+
+			<h2>Retrieving a FieldDesc for a Field</h2>
+
+			<p>Thankfully, we don't have to do anything too hacky for retrieving a <code>FieldDesc</code>. Reflection
+				actually already has a way of getting a <code>FieldDesc</code>.</p>
+
+			<pre class="lang-csharp" data-language="cs" data-allowshrink="True" data-collapse="False"
+				data-showheader="false">FieldInfo.FieldHandle.Value</pre>
+
+			<p><code>Value</code> points to a <code>FieldInfo</code>'s corresponding <code>FieldDesc</code>, where it
+				gets all of its metadata.&nbsp;Therefore, we can write a method to get a <code>FieldInfo</code>'s
+				<code>FieldDesc </code>counterpart.</p>
+
+			<pre class="lang-csharp" data-language="cs" data-allowshrink="True" data-collapse="False"
+				data-showheader="false">public static FieldDesc* GetFieldDescForFieldInfo(FieldInfo fi)
+{
+   if (fi.IsLiteral) {
+      throw new Exception("Const field");
+   }
+
+   FieldDesc* fd = (FieldDesc*) fi.FieldHandle.Value;
+   return fd;
+}</pre>
+
+			<p><strong>Note</strong>: I throw an <code>Exception</code> when the <code>FieldInfo </code>is a literal
+				because you can't access the <code>FieldHandle </code>of a literal (<code>const</code>) field.</p>
+
+			<p>We'll wrap the above method in another method to let us get the <code>FieldDesc </code>easier.</p>
+
+			<pre class="lang-csharp" data-language="cs" data-allowshrink="True" data-collapse="False"
+				data-showheader="false">private const BindingFlags DefaultFlags =
+   BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static;</pre>
+
+			<pre class="lang-csharp" data-language="cs" data-allowshrink="True" data-collapse="False"
+				data-showheader="false">public static FieldDesc* GetFieldDesc(Type t, string name, BindingFlags flags = DefaultFlags)
+{
+   if (t.IsArray) {
+      throw new Exception("Arrays do not have fields");
+   }
+
+
+   FieldInfo fieldInfo = t.GetField(name, flags);
+
+   return GetFieldDescForFieldInfo(fieldInfo);
+}</pre>
+
+			<h2>Getting a Field's Metadata Token</h2>
+
+			<p>Earlier in the article, I said that the bitfield <code>m_mb </code>is used for calculating a field's
+				metadata token, which is used in <code>FieldInfo.MetadataToken</code>. However, it requires some
+				calculation to get the proper token. If we look at <em>field.h</em> line 171 in the <code>CoreCLR</code>
+				repo:</p>
+
+			<pre class="lang-cplusplus" data-language="c++" data-allowshrink="True" data-collapse="False"
+				data-showheader="false">mdFieldDef GetMemberDef() const
+{
+        LIMITED_METHOD_DAC_CONTRACT;
+
+       // Check if this FieldDesc is using the packed mb layout
+       if (!m_requiresFullMbValue)
+       {
+           return TokenFromRid(m_mb &amp; enum_packedMbLayout_MbMask, mdtFieldDef);
+       }
+ 
+       return TokenFromRid(m_mb, mdtFieldDef);
+}</pre>
+
+			<p>We can replicate&nbsp;<code>GetMemberDef </code>like&nbsp;so:</p>
+
+			<pre class="lang-csharp" data-language="cs" data-allowshrink="True" data-collapse="False"
+				data-showheader="false">public int MemberDef {
+   
+   get {
+      // Check if this FieldDesc is using the packed mb layout
+      if (!RequiresFullMBValue)
+      {
+         return TokenFromRid(MB &amp; (int) MbMask.PackedMbLayoutMbMask, CorTokenType.mdtFieldDef);
+      }
+
+      return TokenFromRid(MB, CorTokenType.mdtFieldDef);
+   }
+}</pre>
+
+			<p><code>MbMask</code>:</p>
+
+			<pre class="lang-csharp" data-language="cs" data-allowshrink="True" data-collapse="False"
+				data-showheader="false">enum MbMask
+{
+   PackedMbLayoutMbMask       = 0x01FFFF,
+   PackedMbLayoutNameHashMask = 0xFE0000
+}</pre>
+
+			<p><code>TokenFromRid </code>can be replicated in C# like this:</p>
+
+			<pre class="lang-csharp" data-language="cs" data-allowshrink="True" data-collapse="False"
+				data-showheader="false">static int TokenFromRid(int rid, CorTokenType tktype)
+{
+   return rid | (int) tktype;
+}</pre>
+
+			<p><code>CorTokenType</code>:</p>
+
+			<pre class="lang-csharp" data-language="cs" data-allowshrink="True" data-collapse="False"
+				data-showheader="false">enum CorTokenType
+{
+   mdtModule                 = 0x00000000, //
+   mdtTypeRef                = 0x01000000, //
+   mdtTypeDef                = 0x02000000, //
+   mdtFieldDef               = 0x04000000, //
+   ...</pre>
+
+			<h2>Testing It Out</h2>
+
+			<p><strong>Note</strong>: This was tested on 64-bit.</p>
+
+			<p>We'll make a <code>struct </code>for testing:</p>
+
+			<pre class="lang-csharp" data-language="cs" data-allowshrink="True" data-collapse="False"
+				data-showheader="false">struct Struct
+{
+   private long l;
+   private int    i;
+   public int Int =&gt; i;
+}</pre>
+
+			<p>First, we'll make sure our metadata token matches the one Reflection has:</p>
+
+			<pre class="lang-csharp" data-language="cs" data-allowshrink="True" data-collapse="False"
+				data-showheader="false">var fd = GetFieldDesc&lt;Struct&gt;("l");
+var fi = typeof(Struct).GetField("l", BindingFlags.NonPublic | BindingFlags.Instance);
+
+Debug.Assert(fi.MetadataToken == fd-&gt;MemberDef);      // passes!</pre>
+
+			<p>Then we'll see how the runtime laid out <code>Struct</code>:</p>
+
+			<pre class="lang-csharp" data-language="cs" data-allowshrink="True" data-collapse="False"
+				data-showheader="false">Console.WriteLine(GetFieldDesc(typeof(Struct), "l")-&gt;Offset); <em>== 0</em> 
+Console.WriteLine(GetFieldDesc(typeof(Struct), "i")-&gt;Offset); <em>== 8</em></pre>
+
+			<p>We'll verify we have the correct offset by writing an <code>int</code> to <code>s</code>'s memory at the
+				offset of <code>i</code> that <code>i</code>'s&nbsp;<code>FieldDesc </code>gave us.</p>
+
+			<pre class="lang-csharp" data-language="cs" data-allowshrink="True" data-collapse="False"
+				data-showheader="false">Struct s = new Struct();
+
+IntPtr p = new IntPtr(&amp;s);
+Marshal.WriteInt32(p, GetFieldDesc(typeof(Struct), "i")-&gt;Offset, 123);
+Debug.Assert(s.Int == 123);    // passes!</pre>
+
+			<p><code>i</code> is at offset <code>8</code> because the CLR <em>sometimes</em> puts the largest members
+				first in memory. However, there are some exceptions:</p>
+
+			<p>Let's see what happens when we put a larger value type inside <code>Struct</code>.</p>
+
+			<pre class="lang-csharp" data-language="cs" data-allowshrink="True" data-collapse="False"
+				data-showheader="false">struct Struct
+{
+   private decimal d;
+   private string s;
+   private int    i;
+}</pre>
+
+			<p>This will cause the CLR to insert padding to align <code>Struct</code>:</p>
+
+			<pre class="lang-csharp" data-language="cs" data-allowshrink="True" data-collapse="False"
+				data-showheader="false">Console.WriteLine(GetFieldDesc(typeof(Struct), "d")-&gt;Offset);   <em>== 16</em>
+Console.WriteLine(GetFieldDesc(typeof(Struct), "s")-&gt;Offset);   <em>== 0</em>
+Console.WriteLine(GetFieldDesc(typeof(Struct), "i")-&gt;Offset);   <em>== 8</em></pre>
+
+			<p>This means there's <code>4</code> bytes of padding at offset <code>12</code>.</p>
+
+			<p>The CLR also <em>doesn't </em>insert padding at all if the <code>struct</code> is explicitly laid out:
+			</p>
+
+			<pre class="lang-csharp" data-language="cs" data-allowshrink="True" data-collapse="False"
+				data-showheader="false">[StructLayout(LayoutKind.Explicit)]
+struct Struct
+{
+   [FieldOffset(0)]  private decimal d;
+   [FieldOffset(16)] private int     i;
+   [FieldOffset(20)] private long    l;
+}</pre>
+
+			<pre class="lang-csharp" data-language="cs" data-allowshrink="True" data-collapse="False"
+				data-showheader="false">Console.WriteLine(GetFieldDesc(typeof(Struct), "d")-&gt;Offset);   <em>== 0
+</em>Console.WriteLine(GetFieldDesc(typeof(Struct), "l")-&gt;Offset);   <em>== 20</em>
+Console.WriteLine(GetFieldDesc(typeof(Struct), "i")-&gt;Offset);   <em>== 16</em></pre>
+
+			<h2>What About Static Fields?</h2>
+
+			<p>According to <code>FieldDescs</code> of <code>static </code>fields, they still have offsets. However,
+				their offset will be a big number, like 96. <code>Static</code> fields are stored in the type's
+				<code>MethodTable&nbsp;</code>(another internal structure).</p>
+
+			<h2>What Can We Make With This?</h2>
+
+			<p>You can make a method identical to C's <code>offsetof </code>macro:</p>
+
+			<pre class="lang-csharp" data-language="cs" data-allowshrink="True" data-collapse="False"
+				data-showheader="false">public static int OffsetOf&lt;TType&gt;(string fieldName)
+{
+   return GetFieldDesc(typeof(TType), fieldName)-&gt;Offset;
+}</pre>
+
+			<p>You may be thinking, why not just use <code>Marshal.OffsetOf</code>? Well, because that's the
+				<em>marshaled&nbsp;</em>offset and it doesn't work with unmarshalable or reference types.</p>
+
+			<p>You can also make a class to print the layout of an object. I wrote
+				one which can get the layout of any object (except arrays). You can get
+				the code for that&nbsp;<a
+					href="https://github.com/Decimation/RazorSharp/blob/master/RazorSharp/Analysis/ObjectLayout.cs">here</a>.
+			</p>
+
+			<pre class="lang-csharp" data-language="cs" data-allowshrink="True" data-collapse="False"
+				data-showheader="false">Struct s = new Struct();
+ObjectLayout&lt;Struct&gt; layout = new ObjectLayout&lt;Struct&gt;(ref s);
+Console.WriteLine(layout);</pre>
+
+			<p>Output:</p>
+
+			<pre class="lang-csharp" data-language="cs" data-allowshrink="True" data-collapse="False"
+				data-showheader="false">| Field Offset | Address      | Size | Type    | Name      | Value |
+|--------------|--------------|------|---------|-----------|-------|
+| 0            | 0xD04A3FEE60 | 16   | Decimal | d         | 0     |
+| 16           | 0xD04A3FEE70 | 4    | Int32   | i         | 0     |
+| 20           | 0xD04A3FEE74 | 4    | Byte    | (padding) | 0     |
+| 24           | 0xD04A3FEE78 | 8    | Int64   | s         | 0     |</pre>
+
+			<h2>Sources</h2>
+
+			<ul>
+				<li><a href="https://github.com/Decimation/RazorSharp">My GitHub</a></li>
+				<li><a
+						href="https://github.com/Decimation/RazorSharp/blob/master/RazorSharp/CLR/Structures/FieldDesc.cs">Complete
+						FieldDesc code</a></li>
+				<li><em>CoreCLR: /src/vm/field.cpp, /src/vm/field.h</em></li>
+			</ul>
+
+
+		</span>
+		<!-- End Article -->
+
+
+
+
+	</div>
+
+
+</body>
+<style id="stylus-25" type="text/css" class="stylus">
+	/*
+ * Author: Decimation
+ */
+	/*src: local('Roboto'), local('Roboto-Regular'), url(https://fonts.gstatic.com/s/roboto/v19/KFOmCnqEu92Fr1Mu72xKOzY.woff2) format('woff2');
+font-weight: normal;
+font-style: normal;*/
+	/*src: local('Roboto Mono'), local('Roboto-Mono'), url(https://fonts.gstatic.com/s/robotomono/v13/L0xuDF4xlVMF-BfR8bXMIhJHg45mwgGEFl0_3vq_ROW4.woff2) format('woff2');
+font-weight: normal;
+font-style: normal;*/
+	/*@import url('https://fonts.googleapis.com/css2?family=Roboto&display=swap');*/
+
+	/* @font-face {
+	font-family: 'Arial';
+	src: local('Roboto'), local('Roboto-Regular'), url(https://fonts.gstatic.com/s/roboto/v29/KFOmCnqEu92Fr1Mu7GxP.ttf) format('truetype');
+	font-style: normal;
+	font-weight: 400;
+} */
+
+	@font-face {
+		font-family: 'Helvetica';
+		src: local('Roboto'), local('Roboto-Regular'), url(https://fonts.gstatic.com/s/roboto/v29/KFOmCnqEu92Fr1Mu7GxP.ttf) format('truetype');
+		font-style: normal;
+		font-weight: 300;
+	}
+
+	@font-face {
+		font-family: 'Manrope';
+		src: local('Roboto'), local('Roboto-Regular'), url(https://fonts.gstatic.com/s/roboto/v29/KFOmCnqEu92Fr1Mu7GxP.ttf) format('truetype');
+		font-style: normal;
+		font-weight: 400;
+	}
+
+	@font-face {
+		font-family: "SF Mono";
+		src: local('Consolas');
+		font-weight: 600;
+		font-style: normal;
+	}
+
+	@font-face {
+		font-family: Menlo;
+		src: local('Consolas');
+		font-weight: 600;
+		font-style: normal;
+	}
+
+	@font-face {
+		font-family: "Andale Mono", "Monotype.com", monospace;
+		src: local('Consolas');
+		font-weight: 600;
+		font-style: normal;
+	}
+
+	@font-face {
+		font-family: monospace, monospace;
+		src: local('Consolas');
+		font-weight: 600;
+		font-style: normal;
+	}
+
+	@font-face {
+		font-family: "Courier New";
+		src: local('Consolas');
+		font-weight: 600;
+		font-style: normal;
+	}
+
+	@font-face {
+		font-family: "Courier";
+		src: local('Consolas');
+		font-weight: 600;
+
+		font-style: normal;
+	}
+</style>
+
+</html>
